@@ -84,6 +84,10 @@ typedef struct {
 // * The packet handler *fills* the pending request variable or calls the handler.
 // * The packet handler *clears* the pending request variable or handler to indicate operation completion.
 static pbdrv_bluetooth_local_version_info_t *pending_local_version_info_request;
+static int32_t pending_inquiry_response_count;
+static int32_t pending_inquiry_response_limit;
+static void *pending_inquiry_result_handler_context;
+static pbdrv_bluetooth_inquiry_result_handler_t pending_inquiry_result_handler;
 
 static void pbdrv_bluetooth_btstack_classic_handle_hci_event_packet(uint8_t *packet, uint16_t size);
 
@@ -116,6 +120,38 @@ static void pbdrv_bluetooth_btstack_classic_handle_hci_event_packet(uint8_t *pac
                 }
                 default:
                     break;
+            }
+            break;
+        }
+        case GAP_EVENT_INQUIRY_RESULT: {
+            if (!pending_inquiry_result_handler) {
+                return;
+            }
+            pbdrv_bluetooth_inquiry_result_t result;
+            gap_event_inquiry_result_get_bd_addr(packet, result.bdaddr);
+            if (gap_event_inquiry_result_get_rssi_available(packet)) {
+                result.rssi = gap_event_inquiry_result_get_rssi(packet);
+            }
+            if (gap_event_inquiry_result_get_name_available(packet)) {
+                const uint8_t *name = gap_event_inquiry_result_get_name(packet);
+                const size_t name_len = gap_event_inquiry_result_get_name_len(packet);
+                snprintf(result.name, sizeof(result.name), "%.*s", (int)name_len, name);
+            }
+            result.class_of_device = gap_event_inquiry_result_get_class_of_device(packet);
+            pending_inquiry_result_handler(pending_inquiry_result_handler_context, &result);
+            if (pending_inquiry_response_limit > 0) {
+                pending_inquiry_response_count++;
+                if (pending_inquiry_response_count >= pending_inquiry_response_limit) {
+                    gap_inquiry_stop();
+                }
+            }
+            break;
+        }
+        case GAP_EVENT_INQUIRY_COMPLETE: {
+            if (pending_inquiry_result_handler) {
+                pending_inquiry_result_handler = NULL;
+                pending_inquiry_result_handler_context = NULL;
+                pbio_os_request_poll();
             }
             break;
         }
@@ -162,6 +198,27 @@ pbio_error_t pbdrv_bluetooth_read_local_version_information(pbio_os_state_t *sta
     pending_local_version_info_request = out;
     hci_send_cmd(&hci_read_local_version_information);
     PBIO_OS_AWAIT_UNTIL(state, !pending_local_version_info_request);
+    PBIO_OS_ASYNC_END(PBIO_SUCCESS);
+}
+
+pbio_error_t pbdrv_bluetooth_inquiry_scan(
+    pbio_os_state_t *state,
+    int32_t max_responses,
+    int32_t timeout,
+    void *context,
+    pbdrv_bluetooth_inquiry_result_handler_t result_handler) {
+    PBIO_OS_ASYNC_BEGIN(state);
+    if (pending_inquiry_result_handler) {
+        return PBIO_ERROR_BUSY;
+    }
+    PBIO_OS_AWAIT_UNTIL(state, hci_get_state() == HCI_STATE_WORKING);
+    pending_inquiry_response_count = 0;
+    pending_inquiry_response_limit = max_responses;
+    pending_inquiry_result_handler = result_handler;
+    pending_inquiry_result_handler_context = context;
+    gap_inquiry_start(timeout);
+
+    PBIO_OS_AWAIT_UNTIL(state, !pending_inquiry_result_handler);
     PBIO_OS_ASYNC_END(PBIO_SUCCESS);
 }
 
