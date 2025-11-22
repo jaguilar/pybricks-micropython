@@ -34,6 +34,7 @@ PYBRICKS_PYBRICKS_SRC_C = $(addprefix pybricks/,\
 	ev3devices/pb_type_ev3devices_touchsensor.c \
 	ev3devices/pb_type_ev3devices_ultrasonicsensor.c \
 	experimental/pb_module_btc.c \
+	experimental/pb_type_rfcomm_socket.c \
 	experimental/pb_module_experimental.c \
 	hubs/pb_module_hubs.c \
 	hubs/pb_type_cityhub.c \
