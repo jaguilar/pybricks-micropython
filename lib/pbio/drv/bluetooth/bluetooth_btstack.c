@@ -14,6 +14,8 @@
 #include <ble/gatt-service/nordic_spp_service_server.h>
 #include <btstack.h>
 
+#include <hci_dump_posix_stdout.h>
+
 #include <pbdrv/bluetooth.h>
 #include <pbdrv/clock.h>
 
@@ -24,6 +26,13 @@
 #include "bluetooth_btstack.h"
 #include "genhdr/pybricks_service.h"
 #include "pybricks_service_server.h"
+
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_POSIX
+
+#include <errno.h>
+#include <poll.h>
+
+#endif
 
 #ifdef PBDRV_CONFIG_BLUETOOTH_BTSTACK_HUB_KIND
 #define HUB_KIND PBDRV_CONFIG_BLUETOOTH_BTSTACK_HUB_KIND
@@ -38,7 +47,7 @@
 #define HUB_VARIANT 0x0000
 #endif
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG
 #include <pbdrv/../../drv/uart/uart_debug_first_port.h>
@@ -967,6 +976,13 @@ static void bluetooth_btstack_run_loop_dump_timer(void) {
     // not used
 }
 
+static bool do_poll_handler;
+
+void pbdrv_bluetooth_btstack_run_loop_trigger(void) {
+    do_poll_handler = true;
+    pbio_os_request_poll();
+}
+
 static const btstack_run_loop_t bluetooth_btstack_run_loop = {
     .init = bluetooth_btstack_run_loop_init,
     .add_data_source = bluetooth_btstack_run_loop_add_data_source,
@@ -979,14 +995,10 @@ static const btstack_run_loop_t bluetooth_btstack_run_loop = {
     .execute = bluetooth_btstack_run_loop_execute,
     .dump_timer = bluetooth_btstack_run_loop_dump_timer,
     .get_time_ms = pbdrv_clock_get_ms,
+    .poll_data_sources_from_irq = pbdrv_bluetooth_btstack_run_loop_trigger,
 };
 
-static bool do_poll_handler;
 
-void pbdrv_bluetooth_btstack_run_loop_trigger(void) {
-    do_poll_handler = true;
-    pbio_os_request_poll();
-}
 
 static pbio_os_process_t pbdrv_bluetooth_hci_process;
 
@@ -996,17 +1008,61 @@ static pbio_os_process_t pbdrv_bluetooth_hci_process;
  */
 static pbio_error_t pbdrv_bluetooth_hci_process_thread(pbio_os_state_t *state, void *context) {
 
-    if (do_poll_handler) {
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_POSIX
+    int nfds = btstack_linked_list_count(&data_sources);
+    struct pollfd fds[nfds];
+#endif
+
+    if (do_poll_handler || PBDRV_CONFIG_BLUETOOTH_BTSTACK_POSIX) {
         do_poll_handler = false;
 
         btstack_data_source_t *ds, *next;
-        for (ds = (void *)data_sources; ds != NULL; ds = next) {
+        int i;
+        for (i = 0, ds = (void*)data_sources; ds != NULL; ++i, ds = next) {
             // cache pointer to next data_source to allow data source to remove itself
             next = (void *)ds->item.next;
             if (ds->flags & DATA_SOURCE_CALLBACK_POLL) {
                 ds->process(ds, DATA_SOURCE_CALLBACK_POLL);
             }
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_POSIX
+            struct pollfd* pfd = &fds[i];
+            pfd->fd = ds->source.fd;
+            pfd->events = 0;
+            if (ds->flags & DATA_SOURCE_CALLBACK_READ) {
+                pfd->events |= POLLIN;
+            }
+            if (ds->flags & DATA_SOURCE_CALLBACK_WRITE) {
+                pfd->events |= POLLOUT;
+            }
+#endif
         }
+
+#if PBDRV_CONFIG_BLUETOOTH_BTSTACK_POSIX
+        int err = poll(fds, nfds, 0);
+        if (err < 0) {
+            DEBUG_PRINT("btstack: poll() returned %d, ignoring\n", errno);
+        }
+        else if (err > 0) {
+            // Some fd was ready.
+            btstack_linked_list_iterator_t it;
+            int i;
+            for (i = 0, btstack_linked_list_iterator_init(&it, &data_sources);
+                btstack_linked_list_iterator_has_next(&it); ++i) {
+                btstack_data_source_t* ds = (void*)btstack_linked_list_iterator_next(&it);
+                struct pollfd* pfd = &fds[i];
+                if (pfd->revents & POLLIN) {
+                    ds->process(ds, DATA_SOURCE_CALLBACK_READ);
+                }
+                else if (pfd->revents & POLLOUT) {
+                    ds->process(ds, DATA_SOURCE_CALLBACK_WRITE);
+                }
+                else if (pfd->revents & POLLERR) {
+                    DEBUG_PRINT("btstack: poll() error on fd %d\n", pfd->fd);
+                }
+            }
+
+        }
+#endif
     }
 
     static pbio_os_timer_t btstack_timer = {
@@ -1046,9 +1102,29 @@ void pbdrv_bluetooth_init_hci(void) {
     btstack_memory_init();
     btstack_run_loop_init(&bluetooth_btstack_run_loop);
 
+#if DEBUG
+    // Enable HCI packet dump to stdout when running virtualhub in debug mode
+    const hci_dump_t* hci_dump_impl = hci_dump_posix_stdout_get_instance();
+    hci_dump_init(hci_dump_impl);
+    hci_dump_enable_packet_log(0);
+    hci_dump_enable_log_level(HCI_DUMP_LOG_LEVEL_DEBUG, 0);
+    hci_dump_enable_log_level(HCI_DUMP_LOG_LEVEL_INFO, 1);
+    hci_dump_enable_log_level(HCI_DUMP_LOG_LEVEL_ERROR, 1);
+    printf("HCI packet logging enabled (DEBUG, INFO, ERROR)\n");
+#endif
+
     hci_init(pdata->transport_instance(), pdata->transport_config());
-    hci_set_chipset(pdata->chipset_instance());
-    hci_set_control(pdata->control_instance());
+    if (pdata->chipset_instance != NULL) {
+        hci_set_chipset(pdata->chipset_instance());
+    }
+    else if (pdata->chipset_detect_handler) {
+        static btstack_packet_callback_registration_t reg;
+        reg.callback = pdata->chipset_detect_handler;
+        hci_add_event_handler(&reg);
+    }
+    if (pdata->control_instance != NULL) {
+        hci_set_control(pdata->control_instance());
+    }
 
     // REVISIT: do we need to call btstack_chipset_cc256x_set_power() or btstack_chipset_cc256x_set_power_vector()?
 

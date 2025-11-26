@@ -124,6 +124,18 @@ endif
 ifeq ($(PB_LIB_BTSTACK),1)
 INC += -I$(PBTOP)/lib/btstack/chipset/cc256x
 INC += -I$(PBTOP)/lib/btstack/src
+ifeq ($(PBIO_PLATFORM),virtual_hub)
+INC += -I$(PBTOP)/lib/btstack/platform/posix
+INC += -I$(PBTOP)/lib/btstack/platform/embedded
+INC += -I$(PBTOP)/lib/btstack/3rd-party/tinydir
+INC += -I$(PBTOP)/lib/btstack/3rd-party/rijndael
+INC += -I$(PBTOP)/lib/btstack/3rd-party/micro-ecc
+INC += -I$(PBTOP)/lib/btstack/chipset/bcm
+INC += -I$(PBTOP)/lib/btstack/chipset/intel
+INC += -I$(PBTOP)/lib/btstack/chipset/realtek
+INC += -I$(PBTOP)/lib/btstack/chipset/zephyr
+INC += $(shell pkg-config libusb-1.0 --cflags)
+endif
 endif
 ifeq ($(PB_LIB_LSM6DS3TR_C),1)
 INC += -I$(PBTOP)/lib/lsm6ds3tr_c_STdC/driver
@@ -162,6 +174,9 @@ else ifeq ($(UNAME_S),Darwin)
 LDFLAGS += -Wl,-map,$@.map -Wl,-dead_strip
 endif
 LIBS = -lm
+ifeq ($(PB_LIB_BTSTACK),1)
+LIBS += $(shell pkg-config libusb-1.0 --libs)
+endif
 else # end native, begin embedded
 CROSS_COMPILE ?= arm-none-eabi-
 ifeq ($(PB_MCU_FAMILY),STM32)
@@ -395,6 +410,38 @@ BTSTACK_SRC_C += $(addprefix lib/btstack/chipset/cc256x/,\
 	btstack_chipset_cc256x.c \
 	)
 
+# libusb-specific BTStack sources for virtual_hub
+ifeq ($(PBIO_PLATFORM),virtual_hub)
+BTSTACK_SRC_C += $(addprefix lib/btstack/platform/libusb/,\
+	hci_transport_h2_libusb.c \
+	)
+BTSTACK_SRC_C += $(addprefix lib/btstack/platform/posix/,\
+	hci_dump_posix_stdout.c \
+	)
+BTSTACK_SRC_C += $(addprefix lib/btstack/src/ble/,\
+	le_device_db_tlv.c \
+	)
+BTSTACK_SRC_C += $(addprefix lib/btstack/chipset/zephyr/,\
+	btstack_chipset_zephyr.c \
+	)
+BTSTACK_SRC_C += $(addprefix lib/btstack/chipset/realtek/,\
+	btstack_chipset_realtek.c \
+	)
+BTSTACK_SRC_C += $(addprefix lib/btstack/chipset/bcm/,\
+	btstack_chipset_bcm.c \
+	)
+BTSTACK_SRC_C += $(addprefix lib/btstack/chipset/intel/,\
+	btstack_chipset_intel_firmware.c \
+	)
+BTSTACK_SRC_C += $(addprefix lib/btstack/3rd-party/rijndael/,\
+	rijndael.c \
+	)
+BTSTACK_SRC_C += $(addprefix lib/btstack/3rd-party/micro-ecc/,\
+	uECC.c \
+	)
+
+endif
+
 # STM32 HAL
 
 COPT += -DUSE_FULL_LL_DRIVER
@@ -530,6 +577,7 @@ endif
 
 ifeq ($(PB_LIB_BTSTACK),1)
 OBJ += $(addprefix $(BUILD)/, $(BTSTACK_SRC_C:.c=.o))
+$(BUILD)/lib/btstack/%.o: CFLAGS += -Wno-error
 endif
 
 ifeq ($(PB_LIB_STM32_HAL),1)

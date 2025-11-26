@@ -21,8 +21,19 @@ void pbdrv_uart_debug_init(void);
 
 #else // PBDRV_CONFIG_UART_DEBUG_FIRST_PORT
 
+#if PBDRV_CONFIG_UART_DEBUG_FIRST_PORT_IS_STDERR
+
+#include <stdio.h>
+
+#define pbdrv_uart_debug_printf(...) fprintf(stderr, __VA_ARGS__)
+#define pbdrv_uart_debug_vprintf(format, argptr) vfprintf(stderr, format, argptr)
+
+#else
+
 #define pbdrv_uart_debug_printf(...)
 #define pbdrv_uart_debug_vprintf(format, argptr)
+
+#endif  // PBDRV_CONFIG_UART_DEBUG_FIRST_PORT_IS_STDERR
 
 #define pbdrv_uart_debug_is_done() (true)
 

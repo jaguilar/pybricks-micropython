@@ -9,7 +9,10 @@
 #define PBDRV_CONFIG_BLOCK_DEVICE_TEST                      (1)
 
 #define PBDRV_CONFIG_BLUETOOTH                              (1)
-#define PBDRV_CONFIG_BLUETOOTH_SIMULATION                   (1)
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK                      (1)
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_POSIX                (1)
+#define PBDRV_CONFIG_BLUETOOTH_TRANSPORT_LIBUSB             (1)
+#define PBDRV_CONFIG_BLUETOOTH_BTSTACK_HUB_KIND             (LWP3_HUB_KIND_TECHNIC_LARGE)
 
 #define PBDRV_CONFIG_BUTTON                                 (1)
 #define PBDRV_CONFIG_BUTTON_TEST                            (1)
@@ -37,6 +40,8 @@
 #define PBDRV_CONFIG_MOTOR_DRIVER                           (1)
 #define PBDRV_CONFIG_MOTOR_DRIVER_NUM_DEV                   (6)
 #define PBDRV_CONFIG_MOTOR_DRIVER_VIRTUAL_SIMULATION        (1)
+
+#define PBDRV_CONFIG_UART_DEBUG_FIRST_PORT_IS_STDERR        (1)
 
 #define PBDRV_CONFIG_HAS_PORT_A (1)
 #define PBDRV_CONFIG_HAS_PORT_B (1)

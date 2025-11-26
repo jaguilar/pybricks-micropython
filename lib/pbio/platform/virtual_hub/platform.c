@@ -11,6 +11,8 @@
 #include <arpa/inet.h>
 
 #include "../../drv/motor_driver/motor_driver_virtual_simulation.h"
+#include "../../drv/bluetooth/bluetooth_btstack.h"
+#include "../../drv/bluetooth/bluetooth_transport_libusb.h"
 
 #include "pbio_os_config.h"
 
@@ -142,6 +144,58 @@ const pbdrv_motor_driver_virtual_simulation_platform_data_t
     },
 };
 
+// Bluetooth
+
+// Noop Bluetooth control (no reset/enable pins needed for libusb)
+static void noop_control_init(const void* config) {
+}
+
+static int noop_control_on(void) {
+    return 0;
+}
+
+static int noop_control_off(void) {
+    return 0;
+}
+
+static int noop_control_sleep(void) {
+    return 0;
+}
+
+static int noop_control_wake(void) {
+    return 0;
+}
+
+static void noop_control_register_for_power_notifications(void (*cb)(POWER_NOTIFICATION_t event)) {
+}
+
+static const btstack_control_t noop_btstack_control = {
+    .init = noop_control_init,
+    .on = noop_control_on,
+    .off = noop_control_off,
+    .sleep = noop_control_sleep,
+    .wake = noop_control_wake,
+    .register_for_power_notifications = noop_control_register_for_power_notifications,
+};
+
+static const btstack_control_t* noop_control_instance(void) {
+    return &noop_btstack_control;
+}
+
+static const void* noop_transport_config(void) {
+    return NULL;
+}
+
+const pbdrv_bluetooth_btstack_platform_data_t pbdrv_bluetooth_btstack_platform_data = {
+    .transport_instance = pbdrv_bluetooth_transport_libusb_instance,
+    .transport_config = noop_transport_config,
+    .chipset_instance = NULL,
+    .control_instance = noop_control_instance,
+    .er_key = (const uint8_t*)"uidbase",
+    .ir_key = (const uint8_t*)"uidbase",
+    .chipset_detect_handler = pbdrv_bluetooth_libusb_chipset_detect_packet_handler,
+};
+
 // Socket used to send data to Python animation.
 static int data_socket = -1;
 static struct sockaddr_in serv_addr;
@@ -176,6 +230,8 @@ static void virtual_hub_socket_init(void) {
         return;
     }
 }
+
+
 
 // The 'embedded' main.
 extern void _main(void);

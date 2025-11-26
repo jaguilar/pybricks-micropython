@@ -6,6 +6,7 @@
 #ifndef _INTERNAL_PBDRV_BLUETOOTH_BTSTACK_H_
 #define _INTERNAL_PBDRV_BLUETOOTH_BTSTACK_H_
 
+#include <btstack.h>
 #include <btstack_chipset.h>
 #include <btstack_control.h>
 #include <btstack_uart_block.h>
@@ -19,6 +20,7 @@ typedef struct {
     const btstack_control_t *(*control_instance)(void);
     const uint8_t *er_key;
     const uint8_t *ir_key;
+    btstack_packet_handler_t chipset_detect_handler;
 } pbdrv_bluetooth_btstack_platform_data_t;
 
 // defined in platform.c
