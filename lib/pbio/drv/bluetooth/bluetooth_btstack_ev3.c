@@ -42,7 +42,7 @@
 #include <tiam1808/psc.h>
 #include <tiam1808/uart.h>
 
-#define DEBUG 0
+#define DEBUG 1
 
 #if DEBUG
 #include <pbdrv/../../drv/uart/uart_debug_first_port.h>
@@ -137,9 +137,10 @@ static void ev3_control_init(const void *config) {
 
     #if DEBUG
     hci_dump_init(&bluetooth_btstack_classic_hci_dump);
+    hci_dump_enable_packet_log(false);
     hci_dump_enable_log_level(HCI_DUMP_LOG_LEVEL_INFO, true);
     hci_dump_enable_log_level(HCI_DUMP_LOG_LEVEL_ERROR, true);
-    hci_dump_enable_log_level(HCI_DUMP_LOG_LEVEL_DEBUG, true);
+    hci_dump_enable_log_level(HCI_DUMP_LOG_LEVEL_DEBUG, false);
     #endif
 
     DEBUG_PRINT("Bluetooth: Finished init control\n");
